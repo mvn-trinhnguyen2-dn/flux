@@ -39,6 +39,7 @@ ena = "0.14"
 env_logger = "0.9"
 flatbuffers = "2.1.1"
 fnv = "1.0.7"
+lalrpop-util = "0.19"
 libflate = "1.2.0"
 log = "0.4.16"
 lsp-types = { version = "0.93", optional = true }
@@ -57,6 +58,9 @@ structopt = "0.3.26"
 thiserror = "1"
 tempfile = { version = "3.3.0", optional = true }
 walkdir = "2.2.9"
+
+[build-dependencies]
+lalrpop = "0.19"
 
 [dev-dependencies]
 colored = "2.0"
