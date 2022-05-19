@@ -436,8 +436,16 @@ pub enum Feature {
     LabelPolymorphism,
 }
 
+impl std::str::FromStr for Feature {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_json::from_str(&format!("\"{}\"", s))
+    }
+}
+
 /// A set of configuration options for the behavior of an Analyzer.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct AnalyzerConfig {
     /// Features used in the flux compiler
     pub features: Vec<Feature>,
@@ -501,7 +509,7 @@ impl<'env, I: import::Importer> Analyzer<'env, I> {
         }
 
         let mut sem_pkg = {
-            let mut converter = convert::Converter::with_env(sub, &self.env);
+            let mut converter = convert::Converter::with_env(sub, &self.env, &self.config);
             let sem_pkg = converter.convert_package(ast_pkg);
             if let Err(err) = converter.finish(()) {
                 errors.extend(err.into_iter().map(Error::from));
@@ -523,10 +531,12 @@ impl<'env, I: import::Importer> Analyzer<'env, I> {
         ) {
             Ok(()) => {
                 let env = self.env.exit_scope();
-                PackageExports::try_from(env.values).unwrap_or_else(|err| {
-                    errors.extend(err);
-                    PackageExports::default()
-                })
+                PackageExports::try_from(env.values.into_iter().collect::<Vec<_>>()).unwrap_or_else(
+                    |err| {
+                        errors.extend(err);
+                        PackageExports::default()
+                    },
+                )
             }
             Err(err) => {
                 self.env.exit_scope();

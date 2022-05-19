@@ -39,7 +39,7 @@ use crate::{
         nodes::Symbol,
         sub::Substitution,
         types::{MonoType, PolyType, PolyTypeHashMap, SemanticMap, TvarKinds},
-        Analyzer, AnalyzerConfig, PackageExports,
+        Analyzer, AnalyzerConfig, Feature, PackageExports,
     },
 };
 
@@ -55,8 +55,9 @@ fn parse_map(package: Option<&str>, m: HashMap<&str, &str>) -> PolyTypeHashMap<S
             if let Err(err) = ast::check::check(ast::walk::Node::TypeExpression(&typ_expr)) {
                 panic!("TypeExpression parsing failed for {}. {}", name, err);
             }
-            let poly = convert_polytype(&typ_expr, &mut Substitution::default())
-                .unwrap_or_else(|err| panic!("{}", err));
+            let poly =
+                convert_polytype(&typ_expr, &mut Substitution::default(), &Default::default())
+                    .unwrap_or_else(|err| panic!("{}", err));
 
             (
                 match package {
@@ -3559,7 +3560,7 @@ fn copy_bindings_from_other_env() {
             external: None,
             parent: Some(env.clone().into()),
             readwrite: true,
-            values: maplit::hashmap!(
+            values: indexmap::indexmap!(
                 b => PolyType {
                     vars: Vec::new(),
                     cons: TvarKinds::new(),
@@ -4114,5 +4115,36 @@ fn multiple_errors_in_function_call() {
               │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
         "#]]
+    }
+}
+
+#[test]
+fn multiple_builtins() {
+    test_infer! {
+        src: r#"
+            builtin x : (x: string) => string
+
+            // @feature labelPolymorphism
+            builtin x : (x: A) => string where A: Label
+        "#,
+        exp: map![
+            "x" => "(x: string) => string",
+        ],
+    }
+
+    test_infer! {
+        config: AnalyzerConfig{
+            features: vec![Feature::LabelPolymorphism],
+            ..AnalyzerConfig::default()
+        },
+        src: r#"
+            builtin x : (x: string) => string
+
+            // @feature labelPolymorphism
+            builtin x : (x: A) => string where A: Label
+        "#,
+        exp: map![
+            "x" => "(x: A) => string where A: Label",
+        ],
     }
 }

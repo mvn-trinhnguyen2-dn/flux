@@ -98,6 +98,7 @@ re !~ /foo/
         &pkg,
         &Default::default(),
         &mut sub::Substitution::default(),
+        &Default::default(),
     ) {
         Ok(pkg) => pkg,
         Err(e) => {

@@ -1992,6 +1992,20 @@ impl fmt::Display for Function {
     }
 }
 
+impl<K: Eq + Hash + Clone, V> Substitutable for indexmap::IndexMap<K, V>
+where
+    V: Substitutable + Clone,
+{
+    fn walk(&self, sub: &mut (impl ?Sized + Substituter)) -> Option<Self> {
+        merge_collect(
+            &mut (),
+            self.iter(),
+            |_, (k, v)| v.visit(sub).map(|v| (k.clone(), v)),
+            |_, (k, v)| (k.clone(), v.clone()),
+        )
+    }
+}
+
 impl<K: Eq + Hash + Clone> Substitutable for PolyTypeHashMap<K> {
     fn walk(&self, sub: &mut (impl ?Sized + Substituter)) -> Option<Self> {
         merge_collect(
@@ -2377,7 +2391,7 @@ mod tests {
         if let Err(err) = ast::check::check(ast::walk::Node::TypeExpression(&typ_expr)) {
             panic!("TypeExpression parsing failed for {}. {:?}", typ, err);
         }
-        convert_polytype(&typ_expr, &mut Substitution::default()).unwrap()
+        convert_polytype(&typ_expr, &mut Substitution::default(), &Default::default()).unwrap()
     }
 
     fn parse_type(
@@ -2391,7 +2405,7 @@ mod tests {
         if let Err(err) = ast::check::check(ast::walk::Node::TypeExpression(&typ_expr)) {
             panic!("TypeExpression parsing failed. {:?}", err);
         }
-        convert_monotype(&typ_expr.monotype, tvars, sub).unwrap()
+        convert_monotype(&typ_expr.monotype, tvars, sub, &Default::default()).unwrap()
     }
 
     #[test]

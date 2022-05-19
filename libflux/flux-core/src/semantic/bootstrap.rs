@@ -426,7 +426,7 @@ mod tests {
             if let Err(err) = ast::check::check(ast::walk::Node::TypeExpression(&typ_expr)) {
                 panic!("TypeExpression parsing failed for int. {:?}", err);
             }
-            convert_polytype(&typ_expr, &mut Substitution::default())?
+            convert_polytype(&typ_expr, &mut Substitution::default(), &Default::default())?
         })])
         .unwrap();
         if want != types {
@@ -446,7 +446,7 @@ mod tests {
                         "TypeExpression parsing failed for int. {:?}", err
                     );
                 }
-                convert_polytype(&typ_expr, &mut Substitution::default())?
+                convert_polytype(&typ_expr, &mut Substitution::default(), &Default::default())?
             },
             String::from("b") => {
                 let mut p = parser::Parser::new("{x: int , y: int}");
@@ -456,7 +456,7 @@ mod tests {
                         "TypeExpression parsing failed for int. {:?}", err
                     );
                 }
-                convert_polytype(&typ_expr, &mut Substitution::default())?
+                convert_polytype(&typ_expr, &mut Substitution::default(), &Default::default())?
             },
         };
         if want
