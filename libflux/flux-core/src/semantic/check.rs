@@ -372,6 +372,7 @@ mod tests {
             &ast_pkg,
             &Default::default(),
             &mut sub::Substitution::default(),
+            &Default::default(),
         )?;
         Ok(sem_pkg)
     }

@@ -15,6 +15,7 @@ use crate::{
         nodes::*,
         sub::Substitution,
         types::{self, BuiltinType, MonoType, MonoTypeMap, SemanticMap},
+        AnalyzerConfig, Feature,
     },
 };
 
@@ -72,8 +73,9 @@ pub fn convert_package(
     pkg: &ast::Package,
     env: &Environment,
     sub: &mut Substitution,
+    config: &AnalyzerConfig,
 ) -> Result<Package, Errors<Error>> {
-    let mut converter = Converter::with_env(sub, env);
+    let mut converter = Converter::with_env(sub, env, config);
     let r = converter.convert_package(pkg);
     converter.finish(r)
 }
@@ -85,8 +87,9 @@ pub fn convert_package(
 pub fn convert_polytype(
     type_expression: &ast::TypeExpression,
     sub: &mut Substitution,
+    config: &AnalyzerConfig,
 ) -> Result<types::PolyType, Errors<Error>> {
-    let mut converter = Converter::new(sub);
+    let mut converter = Converter::new(sub, config);
     let r = converter.convert_polytype(type_expression);
     converter.finish(r)
 }
@@ -96,8 +99,9 @@ pub(crate) fn convert_monotype(
     ty: &ast::MonoType,
     tvars: &mut BTreeMap<String, types::Tvar>,
     sub: &mut Substitution,
+    config: &AnalyzerConfig,
 ) -> Result<MonoType, Errors<Error>> {
-    let mut converter = Converter::new(sub);
+    let mut converter = Converter::new(sub, config);
     let r = converter.convert_monotype(&ty, tvars);
     converter.finish(r)
 }
@@ -248,7 +252,25 @@ impl SymbolStack {
     }
 }
 
-#[derive(Debug, Default)]
+fn get_attribute<'a>(comments: impl IntoIterator<Item = &'a str>, attr: &str) -> Option<&'a str> {
+    comments.into_iter().find_map(|comment| {
+        // Remove the comment and any preceding whitespace
+        let comment = comment.trim_start_matches("//").trim_start();
+        if comment.starts_with("@") {
+            let mut iter = comment[1..].splitn(2, char::is_whitespace);
+            let name = iter.next().unwrap();
+            if name == attr {
+                Some(iter.next().unwrap_or("").trim())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    })
+}
+
+#[derive(Debug)]
 struct Symbols<'a> {
     symbols: SymbolStack,
     local_labels: BTreeMap<String, Symbol>,
@@ -256,9 +278,9 @@ struct Symbols<'a> {
 }
 
 impl<'a> Symbols<'a> {
-    fn with_env(env: &'a Environment) -> Self {
+    fn new(env: Option<&'a Environment>) -> Self {
         Symbols {
-            env: Some(env),
+            env,
             local_labels: Default::default(),
             symbols: SymbolStack::default(),
         }
@@ -266,9 +288,11 @@ impl<'a> Symbols<'a> {
 
     fn insert(&mut self, package: Option<&str>, name: &str) -> Symbol {
         let symbol = self.symbols.insert(package, name);
+
         if package.is_none() && !self.local_labels.contains_key(&symbol[..]) {
             self.local_labels.insert(symbol.to_string(), symbol.clone());
         }
+
         symbol
     }
 
@@ -309,22 +333,29 @@ pub(crate) struct Converter<'a> {
     sub: &'a mut Substitution,
     symbols: Symbols<'a>,
     errors: Errors<Error>,
+    config: &'a AnalyzerConfig,
 }
 
 impl<'a> Converter<'a> {
-    fn new(sub: &'a mut Substitution) -> Self {
+    fn new(sub: &'a mut Substitution, config: &'a AnalyzerConfig) -> Self {
         Converter {
             sub,
-            symbols: Symbols::default(),
+            symbols: Symbols::new(None),
             errors: Errors::new(),
+            config,
         }
     }
 
-    pub(crate) fn with_env(sub: &'a mut Substitution, env: &'a Environment) -> Self {
+    pub(crate) fn with_env(
+        sub: &'a mut Substitution,
+        env: &'a Environment,
+        config: &'a AnalyzerConfig,
+    ) -> Self {
         Converter {
             sub,
-            symbols: Symbols::with_env(env),
+            symbols: Symbols::new(Some(env)),
             errors: Errors::new(),
+            config,
         }
     }
 
@@ -366,7 +397,7 @@ impl<'a> Converter<'a> {
         let body = file
             .body
             .iter()
-            .map(|s| self.convert_statement(package_name, s))
+            .filter_map(|s| self.convert_statement(package_name, s))
             .collect::<Vec<Statement>>();
 
         File {
@@ -411,13 +442,13 @@ impl<'a> Converter<'a> {
         }
     }
 
-    fn convert_statement(&mut self, package: &str, stmt: &ast::Statement) -> Statement {
-        match stmt {
+    fn convert_statement(&mut self, package: &str, stmt: &ast::Statement) -> Option<Statement> {
+        Some(match stmt {
             ast::Statement::Option(s) => {
                 Statement::Option(Box::new(self.convert_option_statement(s)))
             }
             ast::Statement::Builtin(s) => {
-                Statement::Builtin(self.convert_builtin_statement(package, s))
+                Statement::Builtin(self.convert_builtin_statement(package, s)?)
             }
             ast::Statement::Test(s) => Statement::Test(Box::new(self.convert_test_statement(s))),
             ast::Statement::TestCase(s) => {
@@ -435,7 +466,7 @@ impl<'a> Converter<'a> {
             ast::Statement::Bad(s) => Statement::Error(BadStmt {
                 loc: s.base.location.clone(),
             }),
-        }
+        })
     }
 
     fn convert_assignment(&mut self, assign: &ast::Assignment) -> Assignment {
@@ -454,12 +485,29 @@ impl<'a> Converter<'a> {
         }
     }
 
-    fn convert_builtin_statement(&mut self, package: &str, stmt: &ast::BuiltinStmt) -> BuiltinStmt {
-        BuiltinStmt {
+    fn convert_builtin_statement(
+        &mut self,
+        package: &str,
+        stmt: &ast::BuiltinStmt,
+    ) -> Option<BuiltinStmt> {
+        // Only include builtin statements that have the `feature` attribute if a matching
+        // feature is detected
+        if let Some(attr) = get_attribute(
+            stmt.base.comments.iter().map(|c| c.text.as_str()),
+            "feature",
+        )
+        .and_then(|attr| attr.parse::<Feature>().ok())
+        {
+            if self.config.features.iter().all(|feature| *feature != attr) {
+                return None;
+            }
+        }
+
+        Some(BuiltinStmt {
             loc: stmt.base.location.clone(),
             id: self.define_identifier(Some(package), &stmt.id),
             typ_expr: self.convert_polytype(&stmt.ty),
-        }
+        })
     }
     fn convert_testcase(&mut self, package: &str, stmt: &ast::TestCaseStmt) -> TestCaseStmt {
         TestCaseStmt {
@@ -473,7 +521,7 @@ impl<'a> Converter<'a> {
                 .block
                 .body
                 .iter()
-                .map(|s| self.convert_statement(package, s))
+                .filter_map(|s| self.convert_statement(package, s))
                 .collect(),
         }
     }
@@ -1309,7 +1357,8 @@ mod tests {
 
     fn test_convert(pkg: ast::Package) -> Result<Package, Errors<Error>> {
         let mut sub = sub::Substitution::default();
-        let mut converter = Converter::new(&mut sub);
+        let config = AnalyzerConfig::default();
+        let mut converter = Converter::new(&mut sub, &config);
         let r = converter.convert_package(&pkg);
         let mut pkg = converter.finish(r)?;
 
@@ -2705,11 +2754,23 @@ mod tests {
         test_convert(pkg).unwrap();
     }
 
+    fn convert_monotype_test(
+        ty: &ast::MonoType,
+        tvars: &mut BTreeMap<String, types::Tvar>,
+    ) -> Result<MonoType, Errors<Error>> {
+        convert_monotype(
+            ty,
+            tvars,
+            &mut sub::Substitution::default(),
+            &Default::default(),
+        )
+    }
+
     #[test]
     fn test_convert_monotype_int() {
         let monotype = Parser::new("int").parse_monotype();
         let mut m = BTreeMap::<String, types::Tvar>::new();
-        let got = convert_monotype(&monotype, &mut m, &mut sub::Substitution::default()).unwrap();
+        let got = convert_monotype_test(&monotype, &mut m).unwrap();
         let want = MonoType::INT;
         assert_eq!(want, got);
     }
@@ -2719,7 +2780,7 @@ mod tests {
         let monotype = Parser::new("{ A with b: int }").parse_monotype();
 
         let mut m = BTreeMap::<String, types::Tvar>::new();
-        let got = convert_monotype(&monotype, &mut m, &mut sub::Substitution::default()).unwrap();
+        let got = convert_monotype_test(&monotype, &mut m).unwrap();
         let want = MonoType::from(types::Record::Extension {
             head: types::Property {
                 k: types::RecordLabel::from("b"),
@@ -2735,8 +2796,7 @@ mod tests {
         let monotype_ex = Parser::new("(?A: int) => int").parse_monotype();
 
         let mut m = BTreeMap::<String, types::Tvar>::new();
-        let got =
-            convert_monotype(&monotype_ex, &mut m, &mut sub::Substitution::default()).unwrap();
+        let got = convert_monotype_test(&monotype_ex, &mut m).unwrap();
         let mut opt = MonoTypeMap::new();
         opt.insert(String::from("A"), MonoType::INT.into());
         let want = MonoType::from(types::Function {
@@ -2752,7 +2812,12 @@ mod tests {
     fn test_convert_polytype() {
         let type_exp =
             Parser::new("(A: T, B: S) => T where T: Addable, S: Divisible").parse_type_expression();
-        let got = convert_polytype(&type_exp, &mut sub::Substitution::default()).unwrap();
+        let got = convert_polytype(
+            &type_exp,
+            &mut sub::Substitution::default(),
+            &Default::default(),
+        )
+        .unwrap();
 
         let want = {
             let mut vars = Vec::<types::Tvar>::new();
@@ -2785,7 +2850,12 @@ mod tests {
     fn test_convert_polytype_2() {
         let type_exp = Parser::new("(A: T, B: S) => T where T: Addable").parse_type_expression();
 
-        let got = convert_polytype(&type_exp, &mut sub::Substitution::default()).unwrap();
+        let got = convert_polytype(
+            &type_exp,
+            &mut sub::Substitution::default(),
+            &Default::default(),
+        )
+        .unwrap();
         let mut vars = Vec::<types::Tvar>::new();
         vars.push(types::Tvar(0));
         vars.push(types::Tvar(1));
@@ -2805,5 +2875,13 @@ mod tests {
         });
         let want = types::PolyType { vars, cons, expr };
         assert_eq!(want, got);
+    }
+
+    #[test]
+    fn test_get_attribute() {
+        assert_eq!(
+            get_attribute(["// @feature labelPolymorphism\n"], "feature"),
+            Some("labelPolymorphism"),
+        );
     }
 }

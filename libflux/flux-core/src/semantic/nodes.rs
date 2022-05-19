@@ -139,6 +139,10 @@ struct InferState<'a, 'env> {
 }
 
 impl InferState<'_, '_> {
+    fn add(&mut self, name: Symbol, t: PolyType) {
+        self.env.add(name, t)
+    }
+
     fn lookup(&mut self, loc: &ast::SourceLocation, name: &Symbol) -> PolyType {
         self.env.lookup(name).cloned().unwrap_or_else(|| {
             self.error(
@@ -512,7 +516,7 @@ impl File {
                 PolyType::error()
             });
 
-            infer.env.add(name, poly);
+            infer.add(name, poly);
         }
 
         for node in &mut self.body {
@@ -603,7 +607,7 @@ pub struct BuiltinStmt {
 impl BuiltinStmt {
     fn infer(&mut self, infer: &mut InferState<'_, '_>) -> std::result::Result<(), Error> {
         self.typ_expr.check_signture(&self.loc, infer);
-        infer.env.add(self.id.name.clone(), self.typ_expr.clone());
+        infer.add(self.id.name.clone(), self.typ_expr.clone());
         Ok(())
     }
     fn apply(self, _: &mut dyn Substituter) -> Self {
@@ -826,7 +830,7 @@ impl VariableAssgn {
         self.cons = p.cons.clone();
 
         // Update the type environment
-        infer.env.add(self.id.name.clone(), p);
+        infer.add(self.id.name.clone(), p);
         Ok(())
     }
     fn apply(mut self, sub: &mut dyn Substituter) -> Self {
@@ -1039,7 +1043,7 @@ impl FunctionExpr {
                         cons: TvarKinds::new(),
                         expr: param_type.clone(),
                     };
-                    infer.env.add(id.clone(), typ);
+                    infer.add(id.clone(), typ);
                     opt.insert(id.to_string(), param_type.into());
                 }
                 None => {
@@ -1052,7 +1056,7 @@ impl FunctionExpr {
                         cons: TvarKinds::new(),
                         expr: MonoType::Var(ftvar),
                     };
-                    infer.env.add(id.clone(), typ.clone());
+                    infer.add(id.clone(), typ.clone());
                     // Piped arguments cannot have a default value.
                     // So check if this is a piped argument.
                     if param.is_pipe {
