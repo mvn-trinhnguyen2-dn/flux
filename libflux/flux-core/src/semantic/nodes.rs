@@ -23,6 +23,7 @@ use crate::{
         env::Environment,
         import::Importer,
         infer::{self, Constraint},
+        scoped::ScopedVec,
         sub::{BindVars, Substitutable, Substituter, Substitution},
         types::{
             self, Dictionary, Function, Kind, Label, MonoType, MonoTypeMap, PolyType, RecordLabel,
@@ -134,6 +135,7 @@ struct InferState<'a, 'env> {
     importer: &'a mut dyn Importer,
     imports: HashMap<Symbol, String>,
     env: &'a mut Environment<'env>,
+    delayed_unifications: ScopedVec<types::Unification>,
     errors: Errors<Error>,
     config: &'a AnalyzerConfig,
 }
@@ -160,7 +162,7 @@ impl InferState<'_, '_> {
     }
 
     fn equal(&mut self, exp: &MonoType, act: &MonoType, loc: &ast::SourceLocation) -> MonoType {
-        match infer::equal(exp, act, loc, self.sub) {
+        match infer::equal(exp, act, loc, self.sub, &mut self.delayed_unifications) {
             Ok(typ) => typ,
             Err(err) => {
                 self.errors
@@ -174,13 +176,13 @@ impl InferState<'_, '_> {
     }
 
     fn solve(&mut self, cons: &impl AsRef<[Constraint]>) {
-        if let Err(err) = infer::solve(cons.as_ref(), self.sub) {
+        if let Err(err) = infer::solve(cons.as_ref(), self.sub, &mut self.delayed_unifications) {
             self.errors.extend(err.into_iter().map(Error::from));
         }
     }
 
     fn subsume(&mut self, exp: &MonoType, act: &MonoType, loc: &ast::SourceLocation) -> MonoType {
-        match infer::subsume(exp, act, loc, self.sub) {
+        match infer::subsume(exp, act, loc, self.sub, &mut self.delayed_unifications) {
             Ok(typ) => typ,
             Err(err) => {
                 self.errors
@@ -205,9 +207,11 @@ impl InferState<'_, '_> {
             exp,
             act.clone().map(|(typ, _)| typ),
         );
+        let mut delayed_unifications = Vec::new();
         if let Err(err) = exp.try_subsume_with(
             &act,
             self.sub,
+            &mut delayed_unifications,
             |typ| (typ.clone(), call_expr.callee.loc()),
             |error| Located {
                 location: call_expr.loc.clone(),
@@ -222,10 +226,41 @@ impl InferState<'_, '_> {
             );
             self.errors.extend(err.into_iter().map(Error::from));
         }
+
+        self.delayed_unifications
+            .extend(delayed_unifications.into_iter().map(|mut unification| {
+                if unification.location == ast::SourceLocation::default() {
+                    unification.location = call_expr.loc.clone();
+                }
+                unification
+            }));
     }
 
     fn error(&mut self, loc: ast::SourceLocation, error: ErrorKind) {
         self.errors.push(located(loc, error));
+    }
+
+    fn enter_scope(&mut self) {
+        self.env.enter_scope();
+        self.delayed_unifications.enter_scope();
+    }
+
+    fn exit_scope(&mut self) {
+        self.env.exit_scope();
+        self.resolve_unifications();
+    }
+
+    fn resolve_unifications(&mut self) {
+        for unification in self.delayed_unifications.exit_scope() {
+            if let Err(err) = unification.resolve(self.sub) {
+                let loc = err.location;
+                self.errors.extend(err.error.into_iter().map(|err| {
+                    let err = located(loc.clone(), err.into());
+                    log::debug!("Unify error: {}", err);
+                    err
+                }));
+            }
+        }
     }
 }
 
@@ -428,10 +463,13 @@ where
         importer,
         imports: Default::default(),
         env,
+        delayed_unifications: Default::default(),
         errors: Errors::new(),
         config,
     };
     pkg.infer(&mut infer).map_err(|err| err.apply(infer.sub))?;
+
+    infer.resolve_unifications();
 
     infer.env.apply_mut(&mut FinalizeTypes { sub: infer.sub });
 
@@ -813,12 +851,14 @@ impl VariableAssgn {
     // before inferring the rest of the program.
     //
     fn infer(&mut self, infer: &mut InferState<'_, '_>) -> Result<()> {
+        infer.delayed_unifications.enter_scope();
         self.init.infer(infer)?;
 
         // Apply substitution to the type environment
         infer.env.apply_mut(infer.sub);
 
         let t = self.init.type_of().apply(infer.sub);
+        infer.resolve_unifications();
         let p = infer::generalize(infer.env, infer.sub, t);
 
         // Update variable assignment nodes with the free vars
@@ -1028,7 +1068,7 @@ impl FunctionExpr {
         let mut opt = MonoTypeMap::new();
 
         // Add the parameters to some nested environment.
-        infer.env.enter_scope();
+        infer.enter_scope();
 
         for param in &mut self.params {
             match param.default {
@@ -1073,7 +1113,7 @@ impl FunctionExpr {
         // And use it to infer the body.
         self.body.infer(infer)?;
         // Now pop the nested environment, we don't need it anymore.
-        infer.env.exit_scope();
+        infer.exit_scope();
 
         let retn = self.body.type_of();
         let func = MonoType::from(Function {
@@ -1298,20 +1338,11 @@ impl BinaryExpr {
         let binop_compare_constraints =
             |this: &mut BinaryExpr, infer: &mut InferState<'_, '_>, kind| {
                 this.typ = MonoType::BOOL;
-                infer.solve(&[
-                    // https://github.com/influxdata/flux/issues/2393
-                    // Constraint::Equal{self.left.type_of(), self.right.type_of()),
-                    Constraint::Kind {
-                        act: this.left.type_of(),
-                        exp: kind,
-                        loc: this.left.loc().clone(),
-                    },
-                    Constraint::Kind {
-                        act: this.right.type_of(),
-                        exp: kind,
-                        loc: this.right.loc().clone(),
-                    },
-                ]);
+                // https://github.com/influxdata/flux/issues/2393
+                // Constraint::Equal{self.left.type_of(), self.right.type_of()),
+                infer.constrain(kind, &this.left.type_of(), this.left.loc());
+
+                infer.constrain(kind, &this.right.type_of(), this.right.loc());
             };
         match self.operator {
             // The following operators require both sides to be equal.
@@ -1592,11 +1623,7 @@ impl MemberExpr {
             MonoType::from(types::Record::Extension { head, tail })
         };
 
-        infer.solve(&[Constraint::Equal {
-            exp: r,
-            act: t,
-            loc: self.object.loc().clone(),
-        }]);
+        infer.equal(&r, &t, self.object.loc());
         Ok(())
     }
     fn apply(mut self, sub: &mut dyn Substituter) -> Self {

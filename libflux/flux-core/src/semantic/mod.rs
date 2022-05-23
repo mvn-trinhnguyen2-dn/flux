@@ -273,7 +273,7 @@ pub fn build_polytype(
 ) -> Result<PolyType, Errors<Error>> {
     let mut sub = Substitution::default();
     let (r, cons) = build_record(from, &mut sub);
-    infer::solve(&cons, &mut sub).map_err(Errors::<nodes::Error>::from)?;
+    infer::solve_all(&cons, &mut sub).map_err(Errors::<nodes::Error>::from)?;
     let typ = MonoType::record(r);
     Ok(infer::generalize(
         &env::Environment::empty(false),
