@@ -274,3 +274,24 @@ fn optional_label_undefined() {
         "#]],
     }
 }
+
+#[test]
+fn variables_used_in_label_position_must_have_label_kind() {
+    test_error_msg! {
+        config: AnalyzerConfig{
+            features: vec![Feature::LabelPolymorphism],
+            ..AnalyzerConfig::default()
+        },
+        src: r#"
+            builtin abc: (record: { A with T: time }, ?timeColumn: T = "_time") => int
+        "#,
+        expect: expect![[r#"
+            error: variable B lacks the Label constraint
+              ┌─ main:2:13
+              │
+            2 │             builtin abc: (record: { A with T: time }, ?timeColumn: T = "_time") => int
+              │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+        "#]],
+    }
+}
