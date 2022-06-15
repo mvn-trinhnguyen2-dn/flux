@@ -50,3 +50,4 @@ testcase yield {
 
     testing.diff(got, want)
 }
+
