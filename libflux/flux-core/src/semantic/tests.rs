@@ -38,7 +38,7 @@ use crate::{
         import::Packages,
         nodes::Symbol,
         sub::Substitution,
-        types::{MonoType, PolyType, PolyTypeHashMap, SemanticMap, TvarKinds},
+        types::{BoundTvarKinds, MonoType, PolyType, PolyTypeHashMap, SemanticMap},
         Analyzer, AnalyzerConfig, Feature, PackageExports,
     },
 };
@@ -3538,7 +3538,7 @@ fn copy_bindings_from_other_env() {
         a.clone(),
         PolyType {
             vars: Vec::new(),
-            cons: TvarKinds::new(),
+            cons: BoundTvarKinds::new(),
             expr: MonoType::BOOL,
         },
     );
@@ -3548,7 +3548,7 @@ fn copy_bindings_from_other_env() {
         b.clone(),
         PolyType {
             vars: Vec::new(),
-            cons: TvarKinds::new(),
+            cons: BoundTvarKinds::new(),
             expr: MonoType::Var(f.fresh()),
         },
     );
@@ -3562,12 +3562,12 @@ fn copy_bindings_from_other_env() {
             values: maplit::hashmap!(
                 b => PolyType {
                     vars: Vec::new(),
-                    cons: TvarKinds::new(),
+                    cons: BoundTvarKinds::new(),
                     expr: MonoType::Var(f.fresh()),
                 },
                 a => PolyType {
                     vars: Vec::new(),
-                    cons: TvarKinds::new(),
+                    cons: BoundTvarKinds::new(),
                     expr: MonoType::BOOL,
                 }
             )
