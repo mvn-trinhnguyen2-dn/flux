@@ -248,7 +248,7 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 	if err := tbl.Do(func(cr flux.ColReader) error {
 		l := cr.Len()
 		prevIndex := 0
-		lastStatusIndex := 0
+		//lastStatusIndex := 0
 		//tempIndex := -1
 		//tempDuration := float64(0)
 
@@ -268,7 +268,7 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 			// invocation of this section, it is skipped.
 			//fmt.Println(currIndex)
 			//fmt.Println(prevIndex)
-			fmt.Println(lastStatusIndex)
+			//fmt.Println(lastStatusIndex)
 
 			prevValue := values.Value(prevIndex)
 			var currValue int64
@@ -294,21 +294,24 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 							//prevIndex = lastStatusIndex
 						} else {
 							duration := float64(ts.Value(currIndex)) - float64(ts.Value(prevIndex))
+							fmt.Printf("%f - %f = %f : %d \n", float64(ts.Value(currIndex)), float64(ts.Value(prevIndex)), duration, prevValue)
 							if err := builder.AppendInt(numCol, int64((duration)/t.unit)); err != nil {
 								return err
 							}
 							if err := execute.AppendMappedRecordExplicit(prevIndex, cr, builder, colMap); err != nil {
 								return err
 							}
-							lastStatusIndex = prevIndex
+							//lastStatusIndex = prevIndex
 							prevIndex = currIndex
 						}
 					} else {
 						var duration float64
 						if currIndex < l {
 							duration = float64(ts.Value(currIndex)) - float64(ts.Value(prevIndex))
+							fmt.Printf("%f - %f = %f : %d \n", float64(ts.Value(currIndex)), float64(ts.Value(prevIndex)), duration, prevValue)
 						} else {
 							duration = float64(sTime) - float64(ts.Value(prevIndex))
+							fmt.Printf("%f - %f = %f : %d \n", float64(sTime), float64(ts.Value(prevIndex)), duration, prevValue)
 						}
 						if err := builder.AppendInt(numCol, int64((duration)/t.unit)); err != nil {
 							return err
@@ -316,15 +319,18 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 						if err := execute.AppendMappedRecordExplicit(prevIndex, cr, builder, colMap); err != nil {
 							return err
 						}
-						lastStatusIndex = prevIndex
+						//lastStatusIndex = prevIndex
 						prevIndex = currIndex
 					}
 				} else {
 					var duration float64
 					if currIndex < l {
 						duration = float64(ts.Value(currIndex)) - float64(ts.Value(prevIndex))
+						fmt.Printf("%f - %f = %f : %d \n", float64(ts.Value(currIndex)), float64(ts.Value(prevIndex)), duration, prevValue)
 					} else {
 						duration = float64(sTime) - float64(ts.Value(prevIndex))
+						fmt.Printf("%f - %f = %f : %d \n", float64(sTime), float64(ts.Value(prevIndex)), duration, prevValue)
+
 					}
 					if err := builder.AppendInt(numCol, int64((duration)/t.unit)); err != nil {
 						return err
@@ -332,7 +338,7 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 					if err := execute.AppendMappedRecordExplicit(prevIndex, cr, builder, colMap); err != nil {
 						return err
 					}
-					lastStatusIndex = prevIndex
+					//lastStatusIndex = prevIndex
 					prevIndex = currIndex
 				}
 			} else {

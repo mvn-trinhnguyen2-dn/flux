@@ -1,6 +1,7 @@
 package events_test
 
 import (
+	"github.com/influxdata/flux/values"
 	"testing"
 	"time"
 
@@ -721,6 +722,15 @@ func TestDuration_Process_2(t *testing.T) {
 }
 
 func TestDuration_Process_3(t *testing.T) {
+	var a1, _ = values.ParseTime("2022-05-01T22:55:49.829385391Z")
+	var a2, _ = values.ParseTime("2022-05-01T22:58:38.834930881Z")
+	var a3, _ = values.ParseTime("2022-05-01T22:58:40.829404853Z")
+	var a4, _ = values.ParseTime("2022-05-02T00:16:31.332149593Z")
+	var a5, _ = values.ParseTime("2022-05-02T00:17:32.832341483Z")
+	var a6, _ = values.ParseTime("2022-05-02T00:39:34.332312749Z")
+	var a7, _ = values.ParseTime("2022-05-02T00:49:59.83161338Z")
+	var stop, _ = values.ParseTime("2022-05-02T23:59:59.83161338Z")
+
 	testCases := []struct {
 		name string
 		spec *events.DurationProcedureSpec
@@ -742,14 +752,13 @@ func TestDuration_Process_3(t *testing.T) {
 					{Label: "_value", Type: flux.TInt},
 				},
 				Data: [][]interface{}{
-					{execute.Time(300 * 1000000000), execute.Time(5 * 1000000000), int64(160)},
-					{execute.Time(300 * 1000000000), execute.Time(10 * 1000000000), int64(192)},
-					{execute.Time(300 * 1000000000), execute.Time(20 * 1000000000), int64(0)},
-					{execute.Time(300 * 1000000000), execute.Time(35 * 1000000000), int64(10)},
-					{execute.Time(300 * 1000000000), execute.Time(120 * 1000000000), int64(15)},
-					{execute.Time(300 * 1000000000), execute.Time(140 * 1000000000), int64(10)},
-					{execute.Time(300 * 1000000000), execute.Time(150 * 1000000000), int64(0)},
-					{execute.Time(300 * 1000000000), execute.Time(155 * 1000000000), int64(240)},
+					{stop, a1, int64(15)},
+					{stop, a2, int64(0)},
+					{stop, a3, int64(192)},
+					{stop, a4, int64(240)},
+					{stop, a5, int64(192)},
+					{stop, a6, int64(240)},
+					{stop, a7, int64(192)},
 				},
 			}},
 			want: []*executetest.Table{{
