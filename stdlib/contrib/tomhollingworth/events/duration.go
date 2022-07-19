@@ -259,7 +259,7 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 			stopTimes := cr.Times(stopIdx)
 			sTime = stopTimes.Value(l - 1)
 		}
-
+		fmt.Printf("List len : %d",l)
 		for currIndex := 1; currIndex <= l; currIndex++ {
 			// Read the current time value. If we have a current time to compare
 			// it to, then append the difference between them.
@@ -294,7 +294,7 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 							//prevIndex = lastStatusIndex
 						} else {
 							duration := float64(ts.Value(currIndex)) - float64(ts.Value(prevIndex))
-							fmt.Printf("%f - %f = %f : %d \n", float64(ts.Value(currIndex)), float64(ts.Value(prevIndex)), duration, prevValue)
+							fmt.Printf("%f - %f = %f : %d %d\n", float64(ts.Value(currIndex)), float64(ts.Value(prevIndex)), duration, prevValue,currValue)
 							if err := builder.AppendInt(numCol, int64((duration)/t.unit)); err != nil {
 								return err
 							}
@@ -308,10 +308,10 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 						var duration float64
 						if currIndex < l {
 							duration = float64(ts.Value(currIndex)) - float64(ts.Value(prevIndex))
-							fmt.Printf("%f - %f = %f : %d \n", float64(ts.Value(currIndex)), float64(ts.Value(prevIndex)), duration, prevValue)
+							fmt.Printf("%f - %f = %f : pV %d cV%d pI %d cI %d\n", float64(ts.Value(currIndex)), float64(ts.Value(prevIndex)), duration, prevValue,currValue,prevIndex,currIndex)
 						} else {
 							duration = float64(sTime) - float64(ts.Value(prevIndex))
-							fmt.Printf("%f - %f = %f : %d \n", float64(sTime), float64(ts.Value(prevIndex)), duration, prevValue)
+							fmt.Printf("%f - %f = %f : pV %d cV%d pI %d cI\n", float64(sTime), float64(ts.Value(prevIndex)), duration, prevValue,currValue,prevIndex,currIndex)
 						}
 						if err := builder.AppendInt(numCol, int64((duration)/t.unit)); err != nil {
 							return err
@@ -326,10 +326,10 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 					var duration float64
 					if currIndex < l {
 						duration = float64(ts.Value(currIndex)) - float64(ts.Value(prevIndex))
-						fmt.Printf("%f - %f = %f : %d \n", float64(ts.Value(currIndex)), float64(ts.Value(prevIndex)), duration, prevValue)
+						fmt.Printf("%f - %f = %f : pV %d cV%d pI %d cI\n", float64(ts.Value(currIndex)), float64(ts.Value(prevIndex)), duration, prevValue,currValue,prevIndex,currIndex)
 					} else {
 						duration = float64(sTime) - float64(ts.Value(prevIndex))
-						fmt.Printf("%f - %f = %f : %d \n", float64(sTime), float64(ts.Value(prevIndex)), duration, prevValue)
+						fmt.Printf("%f - %f = %f : pV %d cV%d pI %d cI\n", float64(sTime), float64(ts.Value(prevIndex)), duration, prevValue,currValue,prevIndex,currIndex)
 
 					}
 					if err := builder.AppendInt(numCol, int64((duration)/t.unit)); err != nil {
