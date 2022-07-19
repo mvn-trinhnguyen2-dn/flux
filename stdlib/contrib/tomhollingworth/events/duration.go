@@ -1,6 +1,7 @@
 package events
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/influxdata/flux"
@@ -243,6 +244,7 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 		l := cr.Len()
 
 		ts := cr.Times(timeIdx)
+		fmt.Printf("List len: %d \n", l)
 		for i := 0; i < l; i++ {
 			// Read the current time value. If we have a current time to compare
 			// it to, then append the difference between them.
@@ -254,6 +256,7 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 				currentTime := float64(cTime)
 				nextTime := float64(nTime)
 				if err := builder.AppendInt(numCol, int64((nextTime-currentTime)/t.unit)); err != nil {
+					fmt.Printf("%f - %f = %d \n", nextTime, currentTime, int64((nextTime-currentTime)/t.unit))
 					return err
 				}
 			}
@@ -289,6 +292,7 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 		currentTime := float64(cTime)
 		nextTime := float64(sTime)
 		if err := builder.AppendInt(numCol, int64((nextTime-currentTime)/t.unit)); err != nil {
+			fmt.Printf("%f - %f = %d \n", nextTime, currentTime, int64((nextTime-currentTime)/t.unit))
 			return err
 		}
 	}
