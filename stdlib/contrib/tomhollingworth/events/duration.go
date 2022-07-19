@@ -255,8 +255,8 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 			if cTimeValid {
 				currentTime := float64(cTime)
 				nextTime := float64(nTime)
+				fmt.Printf("%f - %f = %d \n", nextTime, currentTime, int64((nextTime-currentTime)/t.unit))
 				if err := builder.AppendInt(numCol, int64((nextTime-currentTime)/t.unit)); err != nil {
-					fmt.Printf("%f - %f = %d \n", nextTime, currentTime, int64((nextTime-currentTime)/t.unit))
 					return err
 				}
 			}
@@ -291,8 +291,8 @@ func (t *durationTransformation) Process(id execute.DatasetID, tbl flux.Table) e
 	if cTimeValid {
 		currentTime := float64(cTime)
 		nextTime := float64(sTime)
+		fmt.Printf("%f - %f = %d \n", nextTime, currentTime, int64((nextTime-currentTime)/t.unit))
 		if err := builder.AppendInt(numCol, int64((nextTime-currentTime)/t.unit)); err != nil {
-			fmt.Printf("%f - %f = %d \n", nextTime, currentTime, int64((nextTime-currentTime)/t.unit))
 			return err
 		}
 	}
